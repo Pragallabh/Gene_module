@@ -1,0 +1,100 @@
+rm(list=ls())
+gses <- c( 'GSE23988', 'GSE20194', 'GSE16446', 'GSE20271')
+
+getProbeStatus <- function(gse){
+  gse.data <- GEOquery::getGEO(GEO = gse,GSEMatrix = TRUE)
+  expr <- Biobase::exprs(gse.data[[1]])
+  output <- which(rownames(expr) == '205225_at')
+  return(output)
+}
+for(i in 1:length(gses)){
+  out <- getProbeStatus(gse = gses[i])
+  print(out)
+}
+
+## for a single dataset GSE23988
+gse23988 <- GEOquery::getGEO(GEO = 'GSE23988',GSEMatrix = TRUE)
+
+pheno <- Biobase::phenoData(gse23988[[1]])
+expr <- Biobase::exprs(gse23988[[1]])
+
+case.control <- pheno@data$characteristics_ch1.2
+
+pheno.ERpos <- subset.data.frame(pheno@data[,c(1,12)], characteristics_ch1.2 == "er positive vs negative: ERpos")
+
+pheno.ERneg <- subset.data.frame(pheno@data[,c(1,12)], characteristics_ch1.2 == "er positive vs negative: ERneg")
+
+sample.id <- c(rownames(pheno.ERneg), rownames(pheno.ERpos))
+
+data_samp <- expr[,sample.id]
+probenames <- rownames(data_samp)
+
+idx.na <- grep('^NA',probenames)
+
+probeNames <- probenames[-idx.na]
+
+entrezID <- unlist(mget(probeNames,hgu133aENTREZID))
+entrezID <- na.omit(entrezID)
+
+entrezID.probeID <- data.frame(
+  entrezID = as.character(entrezID),
+  probeID = names(entrezID),
+  stringsAsFactors = FALSE
+)
+
+var.probes <- apply(data_samp[entrezID.probeID$probeID,],1,var)
+
+entrezID.probeID$var <- var.probes
+
+library(plyr)
+entrez.var <-dlply(.data = entrezID.probeID,.variables = 'entrezID')
+
+findMaxVar <- function(x){
+  idx.max <- which.max(x$var)
+  return(x$probeID[idx.max])
+}
+entrez.max <- sapply(entrez.var,findMaxVar)
+
+entrez.expr <- data_samp[as.character(entrez.max),]
+
+rownames(entrez.expr) <- names(entrez.max)
+
+which(rownames(entrezID) == '2099')
+
+## for a single dataset GSE16446
+gse16446 <- GEOquery::getGEO(GEO = 'GSE16446',GSEMatrix = TRUE)
+
+pheno <- Biobase::phenoData(gse16446[[1]])
+expr <- Biobase::exprs(gse16446[[1]])
+
+feature <- c('205225_at','216836_s_at')
+
+x1 <- expr['205225_at',]
+feature.mat <- expr[feature,]
+y.mat <- expr[!rownames(expr) %in% rownames(feature.mat),]
+getMod <- function(X,Y){
+  X <- t(X)
+  df_ <- data.frame(y=Y,x=X)
+  colnames(df_)[-1] <- c('v1','v2')
+  mod <-lm(Y~v1+v2,data=df_)
+  df2 <- data.frame(pheno = pheno@data$characteristics_ch1.3, resi=mod$residuals)
+  anova.mod <- aov(resi~pheno,data = df2)
+  f.val <- summary(anova.mod)[[1]]['F value'][[1]][1]
+  return(f.val)
+}
+
+
+f.statistics <- apply(y.mat, 1,function(y){
+  getMod(X = t(feature.mat),Y = y)
+})
+
+z.score <- scale(f.statistics)[,1]
+selected.genes <- z.score[abs(z.score) >= 16]
+
+module.genes <- expr[which(rownames(expr) %in% names(selected.genes)),]
+
+module.score <- c()
+for(i in 1:ncol(module.genes)){
+  wi <- rep(1,nrow(module.genes))
+  module.score[i] <- sum(module.genes[,i] * wi)/sum(abs(wi))
+}
