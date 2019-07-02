@@ -27,13 +27,9 @@ pheno.ERneg <- subset.data.frame(pheno@data[,c(1,12)], characteristics_ch1.2 == 
 sample.id <- c(rownames(pheno.ERneg), rownames(pheno.ERpos))
 
 data_samp <- expr[,sample.id]
-probenames <- rownames(data_samp)
+probeNames <- rownames(data_samp)
 
-idx.na <- grep('^NA',probenames)
-
-probeNames <- probenames[-idx.na]
-
-entrezID <- unlist(mget(probeNames,hgu133aENTREZID))
+entrezID <- unlist(mget(probeNames,hgu133a.db::hgu133aENTREZID))
 entrezID <- na.omit(entrezID)
 
 entrezID.probeID <- data.frame(
